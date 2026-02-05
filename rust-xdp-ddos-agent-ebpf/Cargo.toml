@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 aya-ebpf = { git = "https://github.com/aya-rs/aya", branch = "main" }
-aya-log-ebpf = { git = "https://github.com/aya-rs/aya", branch = "main" }
 network-types = "0.0.7"
 rust-xdp-ddos-agent-common = { path = "../rust-xdp-ddos-agent-common" }
 
@@ -15,7 +14,7 @@ path = "src/main.rs"
 
 [profile.dev]
 opt-level = 3
-debug = false
+debug = 2
 debug-assertions = false
 overflow-checks = false
 lto = true
@@ -26,7 +25,7 @@ rpath = false
 
 [profile.release]
 opt-level = 3
-debug = false
+debug = 2
 debug-assertions = false
 overflow-checks = false
 lto = true

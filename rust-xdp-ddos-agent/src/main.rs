@@ -8,7 +8,6 @@
 
 use anyhow::{ Context, Result };
 use aya::{ maps::{PerCpuArray, PerCpuValues}, programs::{ Xdp, XdpFlags }, Ebpf };
-use aya_log::EbpfLogger;
 use clap::Parser;
 use log::{ info, warn };
 use rust_xdp_ddos_agent_common::Counter;
@@ -53,11 +52,6 @@ async fn main() -> Result<()> {
     let mut bpf = Ebpf::load(
         include_bytes_aligned!("../../rust-xdp-ddos-agent-ebpf/target/bpfel-unknown-none/release/rust-xdp-ddos-agent")
     )?;
-
-    // 初始化 eBPF 日志
-    if let Err(e) = EbpfLogger::init(&mut bpf) {
-        warn!("无法初始化 eBPF 日志: {}", e);
-    }
 
     // 获取并加载 XDP 程序
     let program: &mut Xdp = bpf

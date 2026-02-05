@@ -7,7 +7,6 @@ use aya_ebpf::{
     maps::PerCpuArray,
     programs::XdpContext,
 };
-use aya_log_ebpf::info;
 use network_types::{
     eth::{EthHdr, EtherType},
     ip::{IpProto, Ipv4Hdr},
@@ -88,7 +87,7 @@ fn try_xdp_ddos_guard(ctx: &XdpContext) -> Result<u32, ()> {
         // 如果超过阈值，丢弃包
         if (*counter).udp_packets > UDP_FLOOD_THRESHOLD {
             (*counter).dropped = (*counter).dropped.wrapping_add(1);
-            info!(ctx, "UDP flood detected! > {} pps, dropping packet", UDP_FLOOD_THRESHOLD);
+            // 日志记录在用户态完成，避免 eBPF 日志的 legacy map 问题
             return Ok(xdp_action::XDP_DROP);
         }
     }
