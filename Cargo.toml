@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["xtask", "rust-xdp-ddos-agent", "rust-xdp-ddos-agent-common"]
+
+[workspace.dependencies]
+aya = "0.13"
+aya-log = "0.2"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+env_logger = "0.11"
