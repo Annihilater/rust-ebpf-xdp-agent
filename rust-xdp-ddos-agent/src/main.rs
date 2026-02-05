@@ -1,20 +1,16 @@
 //! Rust XDP DDoS 防护 Agent
-//! 
+//!
 //! 用户态程序，负责：
 //! - 加载和附加 eBPF 程序到网络接口
 //! - 读取 eBPF Map 中的统计数据
 //! - 实时监控和告警
 //! - 每秒重置计数器
 
-use anyhow::{Context, Result};
-use aya::{
-    maps::PerCpuArray,
-    programs::{Xdp, XdpFlags},
-    Ebpf,
-};
+use anyhow::{ Context, Result };
+use aya::{ maps::{PerCpuArray, PerCpuValues}, programs::{ Xdp, XdpFlags }, Ebpf };
 use aya_log::EbpfLogger;
 use clap::Parser;
-use log::{info, warn};
+use log::{ info, warn };
 use rust_xdp_ddos_agent_common::Counter;
 use std::time::Duration;
 use tokio::signal;
@@ -40,9 +36,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     // 初始化日志
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info")
-    ).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let args = Args::parse();
 
@@ -51,14 +45,14 @@ async fn main() -> Result<()> {
     // 加载 eBPF 程序
     // 注意：需要用 cargo xtask build-ebpf 先编译 eBPF 程序
     #[cfg(debug_assertions)]
-    let mut bpf = Ebpf::load(include_bytes_aligned!(
-        "../../target/bpfel-unknown-none/debug/rust-xdp-ddos-agent"
-    ))?;
-    
+    let mut bpf = Ebpf::load(
+        include_bytes_aligned!("../../rust-xdp-ddos-agent-ebpf/target/bpfel-unknown-none/debug/rust-xdp-ddos-agent")
+    )?;
+
     #[cfg(not(debug_assertions))]
-    let mut bpf = Ebpf::load(include_bytes_aligned!(
-        "../../target/bpfel-unknown-none/release/rust-xdp-ddos-agent"
-    ))?;
+    let mut bpf = Ebpf::load(
+        include_bytes_aligned!("../../rust-xdp-ddos-agent-ebpf/target/bpfel-unknown-none/release/rust-xdp-ddos-agent")
+    )?;
 
     // 初始化 eBPF 日志
     if let Err(e) = EbpfLogger::init(&mut bpf) {
@@ -70,9 +64,9 @@ async fn main() -> Result<()> {
         .program_mut("xdp_ddos_guard")
         .context("找不到 xdp_ddos_guard 程序")?
         .try_into()?;
-    
+
     program.load()?;
-    
+
     // 附加到网络接口
     program
         .attach(&args.iface, XdpFlags::default())
@@ -80,7 +74,8 @@ async fn main() -> Result<()> {
 
     info!(
         "✅ XDP DDoS Agent 已启动 | 接口: {} | 告警阈值: >{} UDP pps",
-        args.iface, args.alert_threshold
+        args.iface,
+        args.alert_threshold
     );
 
     // 获取计数器 Map
@@ -112,15 +107,16 @@ async fn main() -> Result<()> {
                         }
 
                         // 重置计数器 (每秒统计)
-                        if let Err(e) = counter.set(
-                            0,
-                            Counter {
-                                udp_packets: 0,
-                                dropped: 0,
-                            },
-                            0,
-                        ) {
-                            warn!("重置计数器失败: {}", e);
+                        // 获取CPU核心数并创建对应的PerCpuValues
+                        let num_cpus = aya::util::nr_cpus().unwrap_or(1);
+                        let reset_values: Vec<Counter> = (0..num_cpus).map(|_| Counter {
+                            udp_packets: 0,
+                            dropped: 0,
+                        }).collect();
+                        if let Ok(per_cpu_values) = PerCpuValues::try_from(reset_values) {
+                            if let Err(e) = counter.set(0, per_cpu_values, 0) {
+                                warn!("重置计数器失败: {}", e);
+                            }
                         }
                     }
                     Err(e) => {
@@ -142,10 +138,12 @@ async fn main() -> Result<()> {
 /// 用于对齐 eBPF 字节码的宏
 #[macro_export]
 macro_rules! include_bytes_aligned {
-    ($path:expr) => {{
+    ($path:expr) => {
+        {
         #[repr(C, align(8))]
         struct Aligned<T: ?Sized>(T);
         static ALIGNED: &Aligned<[u8]> = &Aligned(*include_bytes!($path));
         &ALIGNED.0
-    }};
+        }
+    };
 }

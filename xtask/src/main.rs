@@ -63,7 +63,6 @@ fn build_ebpf(release: bool) -> Result<()> {
 
     let mut cmd = Command::new("cargo");
     cmd.current_dir("rust-xdp-ddos-agent-ebpf")
-        .env("CARGO_CFG_BPF_TARGET_ARCH", std::env::consts::ARCH)
         .args([
             "+nightly",
             "build",

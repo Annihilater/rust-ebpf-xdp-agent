@@ -47,39 +47,40 @@ pub fn xdp_ddos_guard(ctx: XdpContext) -> u32 {
 
 /// XDP 程序主逻辑
 fn try_xdp_ddos_guard(ctx: &XdpContext) -> Result<u32, ()> {
-    // 解析以太网头部
-    let eth = unsafe { &*ptr_at::<EthHdr>(ctx, 0)? };
+    // 解析以太网头部 (使用 read_unaligned 避免对齐问题)
+    let eth_ptr = unsafe { ptr_at::<EthHdr>(ctx, 0)? };
+    let ether_type = unsafe { core::ptr::addr_of!((*eth_ptr).ether_type).read_unaligned() };
     
     // 只处理 IPv4 包
-    if eth.ether_type != EtherType::Ipv4 {
+    if ether_type != EtherType::Ipv4 {
         return Ok(xdp_action::XDP_PASS);
     }
 
     // 解析 IPv4 头部
-    let ip = unsafe { &*ptr_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
+    let ip_ptr = unsafe { ptr_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
+    let proto = unsafe { core::ptr::addr_of!((*ip_ptr).proto).read_unaligned() };
     
     // 只处理 UDP 包
-    if ip.proto != IpProto::Udp {
+    if proto != IpProto::Udp {
         return Ok(xdp_action::XDP_PASS);
     }
 
     // 计算 UDP 头部偏移量 (IP 头部长度可变)
-    let ip_hdr_len = (ip.ihl() as usize) * 4;
+    let ihl = unsafe { (*ip_ptr).ihl() };
+    let ip_hdr_len = (ihl as usize) * 4;
     let udp_offset = EthHdr::LEN + ip_hdr_len;
     
     // 解析 UDP 头部
-    let udp = unsafe { &*ptr_at::<UdpHdr>(ctx, udp_offset)? };
+    let udp_ptr = unsafe { ptr_at::<UdpHdr>(ctx, udp_offset)? };
     
     // 白名单：放行 DNS 查询 (端口 53)
-    let dest_port = u16::from_be(udp.dest);
-    if dest_port == 53 {
+    let dest_port = unsafe { core::ptr::addr_of!((*udp_ptr).dest).read_unaligned() };
+    if u16::from_be(dest_port) == 53 {
         return Ok(xdp_action::XDP_PASS);
     }
 
     // 更新计数器并检查阈值
-    let counter = unsafe { 
-        GLOBAL_COUNTER.get_ptr_mut(0).ok_or(())? 
-    };
+    let counter = GLOBAL_COUNTER.get_ptr_mut(0).ok_or(())?;
 
     unsafe {
         (*counter).udp_packets = (*counter).udp_packets.wrapping_add(1);
